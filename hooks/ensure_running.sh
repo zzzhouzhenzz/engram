@@ -12,7 +12,7 @@ if curl -s --max-time 2 "$HEALTH_URL" > /dev/null 2>&1; then
 fi
 
 # Start server in background
-engram &
+engram_mcp_server &
 disown
 
 # Wait for server to be ready (up to 10s)
