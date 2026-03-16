@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy the 'hooks' block into ~/.claude/settings.json. Update ENGRAM_DIR path.",
+  "_comment": "Copy the 'hooks' block into ~/.claude/settings.json.",
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$ENGRAM_DIR/hooks/ensure_running.sh",
+            "command": "engram_ensure_running",
             "timeout": 15
           },
           {
