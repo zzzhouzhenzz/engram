@@ -21,6 +21,16 @@ CREATE TABLE IF NOT EXISTS knowledge (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_keywords (
+    knowledge_id INTEGER NOT NULL,
+    keyword TEXT NOT NULL,
+    FOREIGN KEY (knowledge_id) REFERENCES knowledge(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_keyword ON knowledge_keywords(keyword);
+CREATE INDEX IF NOT EXISTS idx_knowledge_id ON knowledge_keywords(knowledge_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_created ON knowledge(created_at);
+
 CREATE TABLE IF NOT EXISTS session_turns (
     session_id TEXT PRIMARY KEY,
     turn_count INTEGER DEFAULT 0,
@@ -50,6 +60,7 @@ def insert_knowledge(
     solution: str,
     keywords: list[str],
 ) -> int:
+    normalized = [kw.strip().lower() for kw in keywords if kw.strip()]
     with _connect() as conn:
         cursor = conn.execute(
             """INSERT INTO knowledge
@@ -62,22 +73,29 @@ def insert_knowledge(
                 approach,
                 outcome,
                 solution,
-                json.dumps(keywords),
+                json.dumps(normalized),
             ),
         )
-        return cursor.lastrowid
+        kid = cursor.lastrowid
+        conn.executemany(
+            "INSERT INTO knowledge_keywords (knowledge_id, keyword) VALUES (?, ?)",
+            [(kid, kw) for kw in normalized],
+        )
+        return kid
 
 
 def search_by_keywords(keywords: list[str]) -> list[dict]:
+    normalized = [kw.strip().lower() for kw in keywords if kw.strip()]
+    if not normalized:
+        return []
+    placeholders = ",".join(["?" for _ in normalized])
     with _connect() as conn:
-        # Match any entry whose keywords overlap with the query
-        conditions = " OR ".join(
-            ["keywords LIKE ?" for _ in keywords]
-        )
-        params = [f"%{kw.strip().lower()}%" for kw in keywords]
         rows = conn.execute(
-            f"SELECT * FROM knowledge WHERE {conditions} ORDER BY created_at DESC",
-            params,
+            f"""SELECT DISTINCT k.* FROM knowledge k
+                JOIN knowledge_keywords kk ON k.id = kk.knowledge_id
+                WHERE kk.keyword IN ({placeholders})
+                ORDER BY k.created_at DESC""",
+            normalized,
         ).fetchall()
         return [_row_to_dict(r) for r in rows]
 
@@ -92,14 +110,10 @@ def get_recent(n: int = 5) -> list[dict]:
 
 def get_all_keywords() -> list[str]:
     with _connect() as conn:
-        rows = conn.execute("SELECT keywords FROM knowledge").fetchall()
-    all_kws: set[str] = set()
-    for row in rows:
-        try:
-            all_kws.update(json.loads(row["keywords"]))
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return sorted(all_kws)
+        rows = conn.execute(
+            "SELECT DISTINCT keyword FROM knowledge_keywords ORDER BY keyword"
+        ).fetchall()
+    return [row["keyword"] for row in rows]
 
 
 # --- Session turn tracking ---
