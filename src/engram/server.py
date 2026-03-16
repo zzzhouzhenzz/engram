@@ -4,8 +4,9 @@ Exposes MCP tools for querying knowledge + HTTP hook endpoints
 for SessionStart and Stop lifecycle events.
 """
 
-import json
 import logging
+import threading
+import time
 from pathlib import Path
 
 import uvicorn
@@ -23,10 +24,35 @@ logging.basicConfig(
 logger = logging.getLogger("engram")
 
 EXTRACTION_INTERVAL = 20  # Extract knowledge every N turns
+IDLE_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+
+# --- Idle timeout tracker ---
+
+_last_activity = time.monotonic()
+_shutdown_event = threading.Event()
+
+
+def _touch_activity():
+    """Reset idle timer on any activity."""
+    global _last_activity
+    _last_activity = time.monotonic()
+
+
+def _idle_watchdog(server: uvicorn.Server):
+    """Background thread that shuts down the server after idle timeout."""
+    while not _shutdown_event.is_set():
+        elapsed = time.monotonic() - _last_activity
+        remaining = IDLE_TIMEOUT_SECONDS - elapsed
+        if remaining <= 0:
+            logger.info("Idle timeout reached (%ds). Shutting down.", IDLE_TIMEOUT_SECONDS)
+            server.should_exit = True
+            return
+        _shutdown_event.wait(timeout=min(remaining, 60))
+
 
 # --- MCP Server ---
 
-mcp = FastMCP("engram")
+mcp = FastMCP("engram_mcp_server")
 
 
 @mcp.tool()
@@ -83,81 +109,81 @@ def get_keyword_index() -> str:
 # --- Hook HTTP Endpoints ---
 
 
-def _add_hook_routes(app) -> None:
-    """Add custom HTTP routes for Claude Code hooks."""
+@mcp.custom_route("/hooks/session-start", methods=["POST"])
+async def hook_session_start(request: Request):
+    """Called by SessionStart hook. Returns context to inject."""
+    _touch_activity()
+    keywords = db.get_all_keywords()
+    recent = db.get_recent(3)
 
-    @app.route("/hooks/session-start", methods=["POST"])
-    async def hook_session_start(request: Request):
-        """Called by SessionStart hook. Returns context to inject."""
-        keywords = db.get_all_keywords()
-        recent = db.get_recent(3)
+    parts = []
 
-        parts = []
+    if keywords:
+        parts.append(
+            "[Engram Knowledge Base]\n"
+            f"Available knowledge keywords: {', '.join(keywords)}\n"
+            "Use the query_knowledge tool when you encounter situations "
+            "related to these keywords."
+        )
 
-        if keywords:
-            parts.append(
-                "[Engram Knowledge Base]\n"
-                f"Available knowledge keywords: {', '.join(keywords)}\n"
-                "Use the query_knowledge tool when you encounter situations "
-                "related to these keywords."
-            )
+    if recent:
+        parts.append("[Recent Learnings]\n" + _format_entries(recent))
 
-        if recent:
-            parts.append(
-                "[Recent Learnings]\n" + _format_entries(recent)
-            )
+    if not parts:
+        return PlainTextResponse("No knowledge stored yet.")
 
-        if not parts:
-            return PlainTextResponse("No knowledge stored yet.")
+    return PlainTextResponse("\n\n".join(parts))
 
-        return PlainTextResponse("\n\n".join(parts))
 
-    @app.route("/hooks/stop", methods=["POST"])
-    async def hook_stop(request: Request):
-        """Called by Stop hook. Tracks turns, triggers extraction."""
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+@mcp.custom_route("/hooks/stop", methods=["POST"])
+async def hook_stop(request: Request):
+    """Called by Stop hook. Tracks turns, triggers extraction."""
+    _touch_activity()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
 
-        session_id = body.get("session_id", "unknown")
-        transcript_path = body.get("transcript_path", "")
+    session_id = body.get("session_id", "unknown")
+    transcript_path = body.get("transcript_path", "")
 
-        # Increment turn counter
-        turn_count = db.increment_turn(session_id)
-        logger.info("Session %s: turn %d", session_id, turn_count)
+    # Increment turn counter
+    turn_count = db.increment_turn(session_id)
+    logger.info("Session %s: turn %d", session_id, turn_count)
 
-        # Check if we should extract
-        should_extract = turn_count >= EXTRACTION_INTERVAL
+    # Check if we should extract
+    should_extract = turn_count >= EXTRACTION_INTERVAL
 
-        if should_extract and transcript_path:
-            logger.info(
-                "Session %s: triggering extraction at turn %d",
-                session_id,
-                turn_count,
-            )
-            transcript = _read_transcript(transcript_path)
-            if transcript:
-                result = extract_knowledge(transcript, session_id)
-                if result:
-                    db.insert_knowledge(
-                        session_id=session_id,
-                        situation=result.get("situation", ""),
-                        tough_spot=result.get("tough_spot", ""),
-                        approach=result.get("approach", ""),
-                        outcome=result.get("outcome", ""),
-                        solution=result.get("solution", ""),
-                        keywords=result.get("keywords", []),
-                    )
-                    logger.info("Session %s: knowledge saved", session_id)
-                # Reset counter after extraction attempt
-                db.reset_turn_count(session_id)
+    if should_extract and transcript_path:
+        logger.info(
+            "Session %s: triggering extraction at turn %d",
+            session_id,
+            turn_count,
+        )
+        transcript = _read_transcript(transcript_path)
+        if transcript:
+            result = extract_knowledge(transcript, session_id)
+            if result:
+                db.insert_knowledge(
+                    session_id=session_id,
+                    situation=result.get("situation", ""),
+                    tough_spot=result.get("tough_spot", ""),
+                    approach=result.get("approach", ""),
+                    outcome=result.get("outcome", ""),
+                    solution=result.get("solution", ""),
+                    keywords=result.get("keywords", []),
+                )
+                logger.info("Session %s: knowledge saved", session_id)
+            # Reset counter after extraction attempt
+            db.reset_turn_count(session_id)
 
-        return JSONResponse({"status": "ok", "turn_count": turn_count})
+    return JSONResponse({"status": "ok", "turn_count": turn_count})
 
-    @app.route("/health", methods=["GET"])
-    async def health(request: Request):
-        return JSONResponse({"status": "healthy", "service": "engram"})
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request: Request):
+    _touch_activity()
+    return JSONResponse({"status": "healthy", "service": "engram"})
 
 
 # --- Helpers ---
@@ -203,13 +229,16 @@ def main():
 
     logger.info("Starting engram MCP server on http://localhost:7777")
 
-    # Get the ASGI app from FastMCP
-    app = mcp.streamable_http_app()
+    app = mcp.http_app()
 
-    # Add custom hook routes
-    _add_hook_routes(app)
+    config = uvicorn.Config(app, host="127.0.0.1", port=7777, log_level="info")
+    server = uvicorn.Server(config)
 
-    uvicorn.run(app, host="127.0.0.1", port=7777, log_level="info")
+    # Start idle watchdog
+    watchdog = threading.Thread(target=_idle_watchdog, args=(server,), daemon=True)
+    watchdog.start()
+
+    server.run()
 
 
 if __name__ == "__main__":
