@@ -1,0 +1,29 @@
+{
+  "_comment": "Copy the 'hooks' block into ~/.claude/settings.json. Update paths to your engram install location.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$ENGRAM_DIR/hooks/session_start.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$ENGRAM_DIR/hooks/stop.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
