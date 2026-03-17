@@ -15,6 +15,9 @@ dependencies = [
 engram_mcp_server = "engram.server:main"
 engram_ensure_running = "engram.ensure_running:main"
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
