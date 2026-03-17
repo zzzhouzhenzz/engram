@@ -42,6 +42,8 @@ pip install -e .
 # Use "_hooks_disabled" as the key to install without enabling.
 # Rename to "hooks" when ready to activate.
 
+# 3. Register MCP server (run once)
+claude mcp add --transport http --scope user engram_mcp_server http://localhost:7777/mcp
 ```
 
 The server auto-starts on your first Claude Code session and auto-stops after 30 minutes of inactivity.
