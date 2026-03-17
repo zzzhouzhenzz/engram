@@ -29,7 +29,22 @@ Each captured entry contains:
 
 ## Setup
 
-> Coming soon — project is under active development.
+```bash
+# 1. Clone and install
+git clone https://github.com/zzzhouzhenzz/engram.git
+cd engram
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+# 2. Add hooks to ~/.claude/settings.json
+# Merge the "hooks" block from hooks.json into your settings.
+# Use "_hooks_disabled" as the key to install without enabling.
+# Rename to "hooks" when ready to activate.
+
+```
+
+The server auto-starts on your first Claude Code session and auto-stops after 30 minutes of inactivity.
 
 ## License
 
