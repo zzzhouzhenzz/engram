@@ -53,4 +53,12 @@ def extract_knowledge(transcript: str, session_id: str) -> dict | None:
     if parsed is None:
         return None
 
+    if not isinstance(parsed, dict) or not REQUIRED_FIELDS.issubset(parsed.keys()):
+        logger.warning("Session %s: response missing required fields", session_id)
+        return None
+
+    if not isinstance(parsed["keywords"], list):
+        logger.warning("Session %s: keywords is not a list", session_id)
+        return None
+
     return parsed
