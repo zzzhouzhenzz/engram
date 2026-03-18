@@ -1,13 +1,9 @@
-"""Tests for engram.server — MCP tools and hook HTTP endpoints."""
-
-import json
-from unittest.mock import patch, MagicMock
+"""Tests for engram.server — MCP tools."""
 
 import pytest
-from starlette.testclient import TestClient
 
 from engram import db
-from engram.server import mcp, query_knowledge, get_recent_knowledge, get_keyword_index
+from engram.server import query_knowledge, get_recent_knowledge, get_keyword_index, save_knowledge
 
 
 @pytest.fixture(autouse=True)
@@ -18,131 +14,7 @@ def _isolate_db(tmp_path, monkeypatch):
     db.init_db()
 
 
-@pytest.fixture()
-def client():
-    """Starlette test client for the MCP HTTP app."""
-    app = mcp.http_app()
-    return TestClient(app)
-
-
-# --- Health endpoint ---
-
-
-def test_health(client):
-    resp = client.get("/health")
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "healthy"
-
-
-# --- SessionStart hook ---
-
-
-def test_session_start_empty_db(client):
-    resp = client.post("/hooks/session-start")
-    body = resp.json()
-    assert resp.status_code == 200
-    assert body["continue"] is True
-    assert body["hookSpecificOutput"]["additionalContext"] == ""
-
-
-def test_session_start_with_knowledge(client):
-    db.insert_knowledge("s1", "deploying app", "OOM crash", "added memory",
-                        "worked", "increase limits", ["docker", "oom"])
-    resp = client.post("/hooks/session-start")
-    body = resp.json()
-    context = body["hookSpecificOutput"]["additionalContext"]
-    assert "docker" in context
-    assert "oom" in context
-    assert "deploying app" in context
-
-
-def test_session_start_returns_keywords_and_recent(client):
-    db.insert_knowledge("s1", "sit1", "", "", "", "", ["python"])
-    db.insert_knowledge("s2", "sit2", "", "", "", "", ["rust"])
-    resp = client.post("/hooks/session-start")
-    context = resp.json()["hookSpecificOutput"]["additionalContext"]
-    assert "python" in context
-    assert "rust" in context
-    assert "query_knowledge" in context
-
-
-# --- Stop hook ---
-
-
-def test_stop_increments_turn(client):
-    resp = client.post("/hooks/stop", json={"session_id": "s1", "transcript_path": ""})
-    assert resp.status_code == 200
-    assert resp.json()["turn_count"] == 1
-
-    resp = client.post("/hooks/stop", json={"session_id": "s1", "transcript_path": ""})
-    assert resp.json()["turn_count"] == 2
-
-
-def test_stop_no_extraction_before_interval(client):
-    """Extraction should not trigger before EXTRACTION_INTERVAL turns."""
-    with patch("engram.server.extract_knowledge") as mock_extract:
-        for _ in range(5):
-            client.post("/hooks/stop", json={"session_id": "s1", "transcript_path": "/tmp/fake"})
-        mock_extract.assert_not_called()
-
-
-def test_stop_triggers_extraction_at_interval(client, tmp_path):
-    """Extraction should trigger at EXTRACTION_INTERVAL turns."""
-    transcript_file = tmp_path / "transcript.jsonl"
-    transcript_file.write_text('{"role":"user","content":"hello"}')
-
-    with patch("engram.server.EXTRACTION_INTERVAL", 3), \
-         patch("engram.server.extract_knowledge") as mock_extract:
-        mock_extract.return_value = {
-            "situation": "test situation",
-            "tough_spot": "test tough spot",
-            "approach": "test approach",
-            "outcome": "test outcome",
-            "solution": "test solution",
-            "keywords": ["test"],
-        }
-        for _ in range(3):
-            client.post("/hooks/stop", json={
-                "session_id": "s1",
-                "transcript_path": str(transcript_file),
-            })
-
-        mock_extract.assert_called_once()
-
-    # Knowledge should be stored
-    results = db.search_by_keywords(["test"])
-    assert len(results) == 1
-    assert results[0]["situation"] == "test situation"
-
-
-def test_stop_resets_counter_after_extraction(client, tmp_path):
-    transcript_file = tmp_path / "transcript.jsonl"
-    transcript_file.write_text('{"role":"user","content":"hello"}')
-
-    with patch("engram.server.EXTRACTION_INTERVAL", 2), \
-         patch("engram.server.extract_knowledge", return_value=None):
-        client.post("/hooks/stop", json={"session_id": "s1", "transcript_path": str(transcript_file)})
-        client.post("/hooks/stop", json={"session_id": "s1", "transcript_path": str(transcript_file)})
-
-    # Counter should be reset after extraction attempt
-    assert db.get_turn_count("s1") == 0
-
-
-def test_stop_handles_missing_body(client):
-    resp = client.post("/hooks/stop")
-    assert resp.status_code == 200
-    assert resp.json()["turn_count"] == 1
-
-
-def test_stop_no_extraction_without_transcript_path(client):
-    """Even at interval, don't extract if no transcript_path."""
-    with patch("engram.server.EXTRACTION_INTERVAL", 1), \
-         patch("engram.server.extract_knowledge") as mock_extract:
-        client.post("/hooks/stop", json={"session_id": "s1", "transcript_path": ""})
-        mock_extract.assert_not_called()
-
-
-# --- MCP tools (called as plain functions) ---
+# --- query_knowledge ---
 
 
 def test_query_knowledge_no_keywords():
@@ -163,6 +35,9 @@ def test_query_knowledge_no_results():
     assert "No knowledge found" in result
 
 
+# --- get_recent_knowledge ---
+
+
 def test_get_recent_knowledge_empty():
     assert get_recent_knowledge() == "No knowledge entries yet."
 
@@ -171,6 +46,9 @@ def test_get_recent_knowledge_with_data():
     db.insert_knowledge("s1", "sit1", "", "", "", "", ["kw"])
     result = get_recent_knowledge(5)
     assert "sit1" in result
+
+
+# --- get_keyword_index ---
 
 
 def test_get_keyword_index_empty():
@@ -182,3 +60,49 @@ def test_get_keyword_index_with_data():
     result = get_keyword_index()
     assert "alpha" in result
     assert "beta" in result
+
+
+# --- save_knowledge ---
+
+
+def test_save_knowledge():
+    result = save_knowledge(
+        situation="setting up Python imports",
+        tough_spot="VS Code linter couldn't resolve",
+        approach="tried relative imports, then pyrightconfig",
+        outcome="pyrightconfig worked",
+        solution="added pyrightconfig.json pointing to .venv",
+        keywords="python, imports, pyright",
+    )
+    assert "Knowledge saved" in result
+    assert "python" in result
+
+    # Verify it's in the DB
+    results = db.search_by_keywords(["python"])
+    assert len(results) == 1
+    assert results[0]["situation"] == "setting up Python imports"
+
+
+def test_save_knowledge_normalizes_keywords():
+    save_knowledge("sit", "tough", "approach", "outcome", "solution", "Python, IMPORTS")
+    results = db.search_by_keywords(["python"])
+    assert len(results) == 1
+    assert results[0]["keywords"] == ["python", "imports"]
+
+
+def test_save_knowledge_requires_keywords():
+    result = save_knowledge("sit", "tough", "approach", "outcome", "solution", "")
+    assert "Error" in result
+
+
+def test_save_knowledge_searchable():
+    save_knowledge("sit1", "tough1", "app1", "out1", "sol1", "docker, oom")
+    save_knowledge("sit2", "tough2", "app2", "out2", "sol2", "python, imports")
+
+    docker_results = db.search_by_keywords(["docker"])
+    assert len(docker_results) == 1
+    assert docker_results[0]["situation"] == "sit1"
+
+    python_results = db.search_by_keywords(["python"])
+    assert len(python_results) == 1
+    assert python_results[0]["situation"] == "sit2"

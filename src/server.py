@@ -1,54 +1,20 @@
 """Engram MCP server — knowledge persistence for Claude Code.
 
-Exposes MCP tools for querying knowledge + HTTP hook endpoints
-for SessionStart and Stop lifecycle events.
+Exposes MCP tools for querying and saving knowledge.
+Runs via stdio transport — Claude Code manages the lifecycle.
 """
 
 import logging
-import threading
-import time
-from pathlib import Path
 
-import uvicorn
 from fastmcp import FastMCP
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 
 from engram import db
-from engram.extractor import extract_knowledge
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 logger = logging.getLogger("engram")
-
-EXTRACTION_INTERVAL = 20  # Extract knowledge every N turns
-IDLE_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
-
-# --- Idle timeout tracker ---
-
-_last_activity = time.monotonic()
-_shutdown_event = threading.Event()
-
-
-def _touch_activity():
-    """Reset idle timer on any activity."""
-    global _last_activity
-    _last_activity = time.monotonic()
-
-
-def _idle_watchdog(server: uvicorn.Server):
-    """Background thread that shuts down the server after idle timeout."""
-    while not _shutdown_event.is_set():
-        elapsed = time.monotonic() - _last_activity
-        remaining = IDLE_TIMEOUT_SECONDS - elapsed
-        if remaining <= 0:
-            logger.info("Idle timeout reached (%ds). Shutting down.", IDLE_TIMEOUT_SECONDS)
-            server.should_exit = True
-            return
-        _shutdown_event.wait(timeout=min(remaining, 60))
-
 
 # --- MCP Server ---
 
@@ -58,6 +24,9 @@ mcp = FastMCP("engram_mcp_server")
 @mcp.tool()
 def query_knowledge(keywords: str) -> str:
     """Search the knowledge base by keywords.
+
+    Call this when you encounter a situation that might match stored knowledge.
+    Use get_keyword_index() first to see available keywords.
 
     Args:
         keywords: Comma-separated keywords to search for.
@@ -80,6 +49,8 @@ def query_knowledge(keywords: str) -> str:
 def get_recent_knowledge(n: int = 5) -> str:
     """Get the N most recent knowledge entries.
 
+    Call this at the start of a session to see what was learned recently.
+
     Args:
         n: Number of recent entries to return (default 5).
 
@@ -97,6 +68,9 @@ def get_recent_knowledge(n: int = 5) -> str:
 def get_keyword_index() -> str:
     """Get all keywords stored in the knowledge base.
 
+    Call this at the start of a session to know what knowledge is available.
+    Then use query_knowledge() when you encounter a relevant situation.
+
     Returns:
         Comma-separated list of all keywords.
     """
@@ -106,89 +80,47 @@ def get_keyword_index() -> str:
     return ", ".join(keywords)
 
 
-# --- Hook HTTP Endpoints ---
+@mcp.tool()
+def save_knowledge(
+    situation: str,
+    tough_spot: str,
+    approach: str,
+    outcome: str,
+    solution: str,
+    keywords: str,
+) -> str:
+    """Save a learning from the current session to the knowledge base.
 
+    Call this when you and the user have solved a non-trivial problem,
+    debugged a tricky issue, or discovered something worth remembering
+    for future sessions. Do NOT save trivial or obvious things.
 
-@mcp.custom_route("/hooks/session-start", methods=["POST"])
-async def hook_session_start(request: Request):
-    """Called by SessionStart hook. Returns context to inject via additionalContext."""
-    _touch_activity()
-    keywords = db.get_all_keywords()
-    recent = db.get_recent(3)
+    Args:
+        situation: What was the context/task?
+        tough_spot: What was the main challenge or blocker?
+        approach: How was it tackled?
+        outcome: What worked and what didn't?
+        solution: What was the final resolution?
+        keywords: Comma-separated lowercase keywords for retrieval.
 
-    parts = []
+    Returns:
+        Confirmation message.
+    """
+    kw_list = [k.strip().lower() for k in keywords.split(",") if k.strip()]
+    if not kw_list:
+        return "Error: at least one keyword is required."
 
-    if keywords:
-        parts.append(
-            "[Engram Knowledge Base]\n"
-            f"Available knowledge keywords: {', '.join(keywords)}\n"
-            "Use the query_knowledge tool when you encounter situations "
-            "related to these keywords."
-        )
-
-    if recent:
-        parts.append("[Recent Learnings]\n" + _format_entries(recent))
-
-    context = "\n\n".join(parts) if parts else ""
-
-    return JSONResponse({
-        "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
-            "additionalContext": context,
-        },
-        "continue": True,
-    })
-
-
-@mcp.custom_route("/hooks/stop", methods=["POST"])
-async def hook_stop(request: Request):
-    """Called by Stop hook. Tracks turns, triggers extraction."""
-    _touch_activity()
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-
-    session_id = body.get("session_id", "unknown")
-    transcript_path = body.get("transcript_path", "")
-
-    # Increment turn counter
-    turn_count = db.increment_turn(session_id)
-    logger.info("Session %s: turn %d", session_id, turn_count)
-
-    # Check if we should extract
-    should_extract = turn_count >= EXTRACTION_INTERVAL
-
-    if should_extract and transcript_path:
-        logger.info(
-            "Session %s: triggering extraction at turn %d",
-            session_id,
-            turn_count,
-        )
-        transcript = _read_transcript(transcript_path)
-        if transcript:
-            result = extract_knowledge(transcript, session_id)
-            if result:
-                db.insert_knowledge(
-                    session_id=session_id,
-                    situation=result.get("situation", ""),
-                    tough_spot=result.get("tough_spot", ""),
-                    approach=result.get("approach", ""),
-                    outcome=result.get("outcome", ""),
-                    solution=result.get("solution", ""),
-                    keywords=result.get("keywords", []),
-                )
-                logger.info("Session %s: knowledge saved", session_id)
-            # Reset counter after extraction attempt
-            db.reset_turn_count(session_id)
-
-    return JSONResponse({"status": "ok", "turn_count": turn_count})
-
-
-@mcp.custom_route("/health", methods=["GET"])
-async def health(request: Request):
-    _touch_activity()
-    return JSONResponse({"status": "healthy", "service": "engram"})
+    kid = db.insert_knowledge(
+        session_id="",
+        situation=situation,
+        tough_spot=tough_spot,
+        approach=approach,
+        outcome=outcome,
+        solution=solution,
+        keywords=kw_list,
+    )
+    logger.info("Knowledge saved (id=%s, keywords=%s)", kid, kw_list)
+    return f"Knowledge saved with keywords: {', '.join(kw_list)}"
 
 
 # --- Helpers ---
@@ -212,19 +144,6 @@ def _format_entries(entries: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def _read_transcript(path: str) -> str | None:
-    """Read a JSONL transcript file and return as string."""
-    p = Path(path)
-    if not p.exists():
-        logger.warning("Transcript not found: %s", path)
-        return None
-    try:
-        return p.read_text()
-    except Exception as e:
-        logger.error("Failed to read transcript: %s", e)
-        return None
-
-
 # --- Entry point ---
 
 
@@ -232,18 +151,8 @@ def main():
     logger.info("Initializing engram database...")
     db.init_db()
 
-    logger.info("Starting engram MCP server on http://localhost:7777")
-
-    app = mcp.http_app()
-
-    config = uvicorn.Config(app, host="127.0.0.1", port=7777, log_level="info")
-    server = uvicorn.Server(config)
-
-    # Start idle watchdog
-    watchdog = threading.Thread(target=_idle_watchdog, args=(server,), daemon=True)
-    watchdog.start()
-
-    server.run()
+    logger.info("Starting engram MCP server (stdio)")
+    mcp.run()
 
 
 if __name__ == "__main__":

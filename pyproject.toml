@@ -7,13 +7,11 @@ license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "fastmcp>=2.0.0",
-    "uvicorn>=0.30.0",
     "anthropic>=0.40.0",
 ]
 
 [project.scripts]
 engram_mcp_server = "engram.server:main"
-engram_ensure_running = "engram.ensure_running:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
