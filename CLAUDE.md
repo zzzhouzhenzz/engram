@@ -5,18 +5,12 @@ Cross-session knowledge persistence for Claude Code. Automatically captures lear
 ## Architecture
 
 ```
-SessionStart hook
-  → Load keyword index + N most recent entries
-  → Inject: "Here's what you know. Use query_knowledge() when relevant."
-
-Every ~20 turns OR session close (Stop hook)
-  → Send transcript to Claude API
-  → Extract structured knowledge
-  → Store in SQLite
-
-MCP Server (HTTP, localhost)
-  → query_knowledge(keywords) — Claude calls on demand
-  → Owns SQLite DB, shared across all sessions
+MCP Server (stdio, managed by Claude Code)
+  → get_keyword_index() — Claude checks what knowledge exists
+  → query_knowledge(keywords) — Claude pulls relevant knowledge
+  → get_recent_knowledge(n) — Claude sees recent learnings
+  → save_knowledge(...) — Claude saves learnings directly
+  → SQLite DB shared across all sessions
 ```
 
 ## Knowledge Schema
@@ -32,17 +26,12 @@ Each entry is structured as:
 ## Tech Stack
 
 - Python
-- SQLite (local database)
-- Claude API (knowledge extraction)
-- MCP Server (HTTP transport, shared across sessions)
-- Claude Code Hooks (SessionStart, Stop)
+- SQLite (local database at ~/.engram/engram.db)
+- FastMCP (stdio transport)
 
 ## Components
 
-- `server/` — MCP HTTP server + SQLite DB
-- `hooks/` — Claude Code hook scripts
-- `extractor/` — Knowledge extraction via Claude API
-
-## TODO (local only, not published)
-
-- [ ] Vector search / semantic retrieval for keyword matching
+- `src/server.py` — MCP server with tools for querying and saving knowledge
+- `src/db.py` — SQLite database layer with indexed keyword search
+- `src/extractor.py` — Knowledge extraction via Claude API (available for batch use)
+- `tests/` — Unit tests for all components

@@ -10,9 +10,9 @@ You solve a tricky problem with Claude Code. A week later, you hit the same situ
 
 ## How It Works
 
-1. **Auto-capture**: After every ~20 interactions (or when you close a session), Engram extracts structured knowledge — what the problem was, what you tried, what worked, and the final solution.
-2. **Auto-surface**: When you start a new session, Engram loads a keyword index. As you work, Claude recognizes relevant knowledge and pulls it in on demand.
-3. **Cross-session**: A shared local database means knowledge from any session is instantly available to all others.
+1. **Auto-surface**: When Claude sees the engram tools, it checks the keyword index and pulls in relevant knowledge on demand.
+2. **Auto-save**: When you solve a non-trivial problem, Claude saves the learning — what the problem was, what you tried, what worked, and the final solution.
+3. **Cross-session**: A shared local SQLite database means knowledge from any session is available to all others.
 
 ## Knowledge Format
 
@@ -37,16 +37,20 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 
-# 2. Add hooks to ~/.claude/settings.json
-# Merge the "hooks" block from hooks.json into your settings.
-# Use "_hooks_disabled" as the key to install without enabling.
-# Rename to "hooks" when ready to activate.
-
-# 3. Register MCP server (run once)
-claude mcp add --transport http --scope user engram_mcp_server http://localhost:7777/mcp
+# 2. Register MCP server (run once)
+claude mcp add --scope user engram_mcp_server -- $(which engram_mcp_server)
 ```
 
-The server auto-starts on your first Claude Code session and auto-stops after 30 minutes of inactivity.
+Claude Code manages the server lifecycle automatically via stdio — no manual server management needed.
+
+## MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_keyword_index` | List all keywords in the knowledge base |
+| `query_knowledge` | Search by keywords |
+| `get_recent_knowledge` | Get N most recent entries |
+| `save_knowledge` | Save a learning from the current session |
 
 ## License
 
