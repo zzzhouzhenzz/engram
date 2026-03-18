@@ -28,11 +28,19 @@ logger = logging.getLogger("engram")
 mcp = FastMCP(
     "engram_mcp_server",
     instructions=(
-        "[Engram] Cross-session knowledge persistence is active. "
-        "At the start of each session, call get_keyword_index() to see what "
-        "knowledge is available, then query_knowledge() for anything relevant "
-        "to the current task. When you and the user solve a non-trivial problem, "
-        "call save_knowledge() to remember it for future sessions."
+        "[Engram] Cross-session knowledge persistence is active.\n\n"
+        "ON SESSION START:\n"
+        "- Call get_keyword_index() to see available knowledge.\n"
+        "- If any keywords are relevant to the current task, call query_knowledge().\n\n"
+        "DURING THE SESSION:\n"
+        "- When you solve a non-trivial problem, debug a tricky issue, or discover "
+        "something worth remembering, call save_knowledge() immediately.\n\n"
+        "BEFORE SESSION ENDS:\n"
+        "- When the user says goodbye, exit, quit, done, or signals they are finished, "
+        "ALWAYS review what was accomplished in this session.\n"
+        "- If anything non-trivial was learned or solved, call save_knowledge() BEFORE "
+        "responding with your farewell. Do NOT skip this step.\n"
+        "- Do NOT save trivial conversations like greetings or simple questions."
     ),
 )
 
