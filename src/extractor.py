@@ -39,20 +39,8 @@ def _strip_code_fence(text: str) -> str:
     return stripped
 
 
-def extract_knowledge(transcript: str, session_id: str) -> dict | None:
-    """Extract structured knowledge from a conversation transcript.
-
-    Returns a dict with keys:
-        situation, tough_spot, approach, outcome, solution, keywords
-
-    Returns None if transcript is empty or nothing worth saving.
-    """
-    if not transcript or not transcript.strip():
-        logger.info("Empty transcript for session=%s, skipping", session_id)
-        return None
-
-    logger.info("Extracting knowledge for session=%s, transcript_len=%d", session_id, len(transcript))
-
+def _call_api(transcript: str) -> str | None:
+    """Send transcript to Claude API and return raw response text."""
     try:
         client = anthropic.Anthropic()
         response = client.messages.create(
@@ -60,11 +48,14 @@ def extract_knowledge(transcript: str, session_id: str) -> dict | None:
             max_tokens=1024,
             messages=[{"role": "user", "content": EXTRACTION_PROMPT + transcript}],
         )
-        raw = response.content[0].text
+        return response.content[0].text
     except Exception as e:
-        logger.error("Session %s: API call failed: %s", session_id, e)
+        logger.error("API call failed: %s", e)
         return None
 
+
+def _parse_response(raw: str, session_id: str) -> dict | None:
+    """Parse raw API response into a validated knowledge dict."""
     raw = _strip_code_fence(raw)
 
     try:
@@ -85,3 +76,24 @@ def extract_knowledge(transcript: str, session_id: str) -> dict | None:
         return None
 
     return parsed
+
+
+def extract_knowledge(transcript: str, session_id: str) -> dict | None:
+    """Extract structured knowledge from a conversation transcript.
+
+    Returns a dict with keys:
+        situation, tough_spot, approach, outcome, solution, keywords
+
+    Returns None if transcript is empty or nothing worth saving.
+    """
+    if not transcript or not transcript.strip():
+        logger.info("Empty transcript for session=%s, skipping", session_id)
+        return None
+
+    logger.info("Extracting knowledge for session=%s, transcript_len=%d", session_id, len(transcript))
+
+    raw = _call_api(transcript)
+    if raw is None:
+        return None
+
+    return _parse_response(raw, session_id)
