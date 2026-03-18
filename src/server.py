@@ -172,14 +172,27 @@ def _format_entries(entries: list[dict]) -> str:
 
 
 def main():
+    import signal
+    import sys
+
+    # Suppress stderr output (FastMCP banner, asyncio noise)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    sys.stderr = open(LOG_DIR / "engram_stderr.log", "w")
+
+    # Handle SIGINT/SIGTERM gracefully so Claude Code sees a clean exit
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
     logger.info("Initializing engram database...")
     db.init_db()
 
     logger.info("Starting engram MCP server (stdio)")
     try:
-        mcp.run()
-    except Exception as e:
-        logger.error("MCP server error on shutdown: %s", e)
+        mcp.run(show_banner=False)
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    except BaseException as e:
+        logger.error("MCP server error: %s: %s", type(e).__name__, e, exc_info=True)
     logger.info("Engram MCP server stopped")
 
 
