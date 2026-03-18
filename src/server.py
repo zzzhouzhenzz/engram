@@ -5,14 +5,21 @@ Runs via stdio transport — Claude Code manages the lifecycle.
 """
 
 import logging
+from pathlib import Path
 
 from fastmcp import FastMCP
 
 from engram import db
 
+LOG_DIR = Path.home() / ".engram"
+LOG_PATH = LOG_DIR / "engram.log"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_PATH),
+    ],
 )
 logger = logging.getLogger("engram")
 
