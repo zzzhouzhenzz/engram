@@ -176,7 +176,11 @@ def main():
     db.init_db()
 
     logger.info("Starting engram MCP server (stdio)")
-    mcp.run()
+    try:
+        mcp.run()
+    except Exception as e:
+        logger.error("MCP server error on shutdown: %s", e)
+    logger.info("Engram MCP server stopped")
 
 
 if __name__ == "__main__":
