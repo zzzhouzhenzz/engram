@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 engram_mcp_server = "engram.server:main"
+engram_session_start = "engram.hook_session_start:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
