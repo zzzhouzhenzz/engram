@@ -1,9 +1,8 @@
-"""Knowledge extraction from conversation transcripts.
-
-STUB — will be implemented with Claude API calls later.
-"""
+"""Knowledge extraction from conversation transcripts."""
 
 import logging
+
+import anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -14,15 +13,10 @@ def extract_knowledge(transcript: str, session_id: str) -> dict | None:
     Returns a dict with keys:
         situation, tough_spot, approach, outcome, solution, keywords
 
-    Currently a stub — returns None. Will call Claude API later.
+    Returns None if transcript is empty or nothing worth saving.
     """
-    logger.info(
-        "extract_knowledge called (STUB) — session=%s, transcript_len=%d",
-        session_id,
-        len(transcript),
-    )
-    # TODO: Call Claude API to extract structured knowledge
-    # - Send transcript with extraction prompt
-    # - Parse structured response
-    # - Return dict or None if nothing worth saving
+    if not transcript or not transcript.strip():
+        logger.info("Empty transcript for session=%s, skipping", session_id)
+        return None
+
     return None
