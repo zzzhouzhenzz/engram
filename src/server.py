@@ -12,7 +12,7 @@ from pathlib import Path
 import uvicorn
 from fastmcp import FastMCP
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.responses import JSONResponse
 
 from engram import db
 from engram.extractor import extract_knowledge
@@ -111,7 +111,7 @@ def get_keyword_index() -> str:
 
 @mcp.custom_route("/hooks/session-start", methods=["POST"])
 async def hook_session_start(request: Request):
-    """Called by SessionStart hook. Returns context to inject."""
+    """Called by SessionStart hook. Returns context to inject via additionalContext."""
     _touch_activity()
     keywords = db.get_all_keywords()
     recent = db.get_recent(3)
@@ -129,10 +129,15 @@ async def hook_session_start(request: Request):
     if recent:
         parts.append("[Recent Learnings]\n" + _format_entries(recent))
 
-    if not parts:
-        return PlainTextResponse("No knowledge stored yet.")
+    context = "\n\n".join(parts) if parts else ""
 
-    return PlainTextResponse("\n\n".join(parts))
+    return JSONResponse({
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": context,
+        },
+        "continue": True,
+    })
 
 
 @mcp.custom_route("/hooks/stop", methods=["POST"])
