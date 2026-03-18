@@ -26,6 +26,19 @@ Transcript:
 REQUIRED_FIELDS = {"situation", "tough_spot", "approach", "outcome", "solution", "keywords"}
 
 
+def _strip_code_fence(text: str) -> str:
+    """Remove markdown code fences (```json ... ```) if present."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        # Remove opening fence (e.g. ```json or ```)
+        first_newline = stripped.index("\n")
+        stripped = stripped[first_newline + 1:]
+        # Remove closing fence
+        if stripped.endswith("```"):
+            stripped = stripped[:-3].strip()
+    return stripped
+
+
 def extract_knowledge(transcript: str, session_id: str) -> dict | None:
     """Extract structured knowledge from a conversation transcript.
 
@@ -51,6 +64,8 @@ def extract_knowledge(transcript: str, session_id: str) -> dict | None:
     except Exception as e:
         logger.error("Session %s: API call failed: %s", session_id, e)
         return None
+
+    raw = _strip_code_fence(raw)
 
     try:
         parsed = json.loads(raw)
