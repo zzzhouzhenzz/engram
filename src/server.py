@@ -36,13 +36,13 @@ def query_knowledge(keywords: str) -> str:
     """
     kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
     if not kw_list:
-        return "No keywords provided."
+        return "[Engram] No keywords provided."
 
     results = db.search_by_keywords(kw_list)
     if not results:
-        return f"No knowledge found for keywords: {keywords}"
+        return f"[Engram] No knowledge found for keywords: {keywords}"
 
-    return _format_entries(results)
+    return "[Engram] Found knowledge:\n\n" + _format_entries(results)
 
 
 @mcp.tool()
@@ -59,9 +59,9 @@ def get_recent_knowledge(n: int = 5) -> str:
     """
     results = db.get_recent(n)
     if not results:
-        return "No knowledge entries yet."
+        return "[Engram] No knowledge entries yet."
 
-    return _format_entries(results)
+    return "[Engram] Recent knowledge:\n\n" + _format_entries(results)
 
 
 @mcp.tool()
@@ -76,8 +76,8 @@ def get_keyword_index() -> str:
     """
     keywords = db.get_all_keywords()
     if not keywords:
-        return "No keywords yet."
-    return ", ".join(keywords)
+        return "[Engram] No keywords yet."
+    return "[Engram] Available keywords: " + ", ".join(keywords)
 
 
 @mcp.tool()
@@ -108,7 +108,7 @@ def save_knowledge(
     """
     kw_list = [k.strip().lower() for k in keywords.split(",") if k.strip()]
     if not kw_list:
-        return "Error: at least one keyword is required."
+        return "[Engram] Error: at least one keyword is required."
 
     kid = db.insert_knowledge(
         session_id="",
@@ -120,7 +120,7 @@ def save_knowledge(
         keywords=kw_list,
     )
     logger.info("Knowledge saved (id=%s, keywords=%s)", kid, kw_list)
-    return f"Knowledge saved with keywords: {', '.join(kw_list)}"
+    return f"[Engram] Knowledge saved with keywords: {', '.join(kw_list)}"
 
 
 # --- Helpers ---

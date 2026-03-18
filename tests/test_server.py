@@ -18,8 +18,8 @@ def _isolate_db(tmp_path, monkeypatch):
 
 
 def test_query_knowledge_no_keywords():
-    assert query_knowledge("") == "No keywords provided."
-    assert query_knowledge("  , , ") == "No keywords provided."
+    assert query_knowledge("") == "[Engram] No keywords provided."
+    assert query_knowledge("  , , ") == "[Engram] No keywords provided."
 
 
 def test_query_knowledge_with_results():
@@ -39,7 +39,7 @@ def test_query_knowledge_no_results():
 
 
 def test_get_recent_knowledge_empty():
-    assert get_recent_knowledge() == "No knowledge entries yet."
+    assert get_recent_knowledge() == "[Engram] No knowledge entries yet."
 
 
 def test_get_recent_knowledge_with_data():
@@ -52,7 +52,7 @@ def test_get_recent_knowledge_with_data():
 
 
 def test_get_keyword_index_empty():
-    assert get_keyword_index() == "No keywords yet."
+    assert get_keyword_index() == "[Engram] No keywords yet."
 
 
 def test_get_keyword_index_with_data():
