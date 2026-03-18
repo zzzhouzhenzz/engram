@@ -40,15 +40,23 @@ def extract_knowledge(transcript: str, session_id: str) -> dict | None:
 
     logger.info("Extracting knowledge for session=%s, transcript_len=%d", session_id, len(transcript))
 
-    client = anthropic.Anthropic()
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": EXTRACTION_PROMPT + transcript}],
-    )
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": EXTRACTION_PROMPT + transcript}],
+        )
+        raw = response.content[0].text
+    except Exception as e:
+        logger.error("Session %s: API call failed: %s", session_id, e)
+        return None
 
-    raw = response.content[0].text
-    parsed = json.loads(raw)
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error("Session %s: malformed JSON response: %s — %s", session_id, e, raw[:200])
+        return None
 
     if parsed is None:
         return None
