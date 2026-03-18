@@ -18,7 +18,16 @@ logger = logging.getLogger("engram")
 
 # --- MCP Server ---
 
-mcp = FastMCP("engram_mcp_server")
+mcp = FastMCP(
+    "engram_mcp_server",
+    instructions=(
+        "[Engram] Cross-session knowledge persistence is active. "
+        "At the start of each session, call get_keyword_index() to see what "
+        "knowledge is available, then query_knowledge() for anything relevant "
+        "to the current task. When you and the user solve a non-trivial problem, "
+        "call save_knowledge() to remember it for future sessions."
+    ),
+)
 
 
 @mcp.tool()
