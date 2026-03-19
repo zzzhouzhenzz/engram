@@ -172,16 +172,23 @@ def _format_entries(entries: list[dict]) -> str:
 
 
 def main():
+    import os
     import signal
     import sys
 
-    # Suppress stderr output (FastMCP banner, asyncio noise)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Redirect stderr to log file. FastMCP's transport layer writes "Starting
+    # MCP server" to stderr via rich — keep it out of Claude Code's pipe.
     sys.stderr = open(LOG_DIR / "engram_stderr.log", "w")
 
-    # Handle SIGINT/SIGTERM gracefully so Claude Code sees a clean exit
-    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    # Terminate immediately on signals. Claude Code sends SIGINT/SIGTERM on
+    # session close. Known Claude Code bug (#18127): it sends a shutdown request
+    # and a kill signal concurrently, then reports "MCP server failed" when the
+    # server exits before responding to shutdown. This is cosmetic — the server
+    # worked fine. os._exit avoids SystemExit tracebacks on stderr.
+    signal.signal(signal.SIGINT, lambda *_: os._exit(0))
+    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
 
     logger.info("Initializing engram database...")
     db.init_db()
