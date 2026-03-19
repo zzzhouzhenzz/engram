@@ -1,0 +1,12 @@
+{
+  "name": "engram",
+  "description": "Cross-session knowledge persistence for Claude Code. Automatically captures learnings and resurfaces them when relevant.",
+  "version": "0.1.0",
+  "author": {
+    "name": "zhouzhen24"
+  },
+  "homepage": "https://github.com/zzzhouzhenzz/engram",
+  "repository": "https://github.com/zzzhouzhenzz/engram",
+  "license": "MIT",
+  "keywords": ["knowledge", "memory", "persistence", "mcp", "learning"]
+}

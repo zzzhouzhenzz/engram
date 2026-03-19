@@ -1,0 +1,15 @@
+{
+  "name": "engram-marketplace",
+  "description": "Marketplace for Engram — cross-session knowledge persistence for Claude Code",
+  "owner": {
+    "name": "zhouzhen24"
+  },
+  "plugins": [
+    {
+      "name": "engram",
+      "description": "Cross-session knowledge persistence for Claude Code. Automatically captures learnings and resurfaces them when relevant.",
+      "version": "0.1.0",
+      "source": "./"
+    }
+  ]
+}
