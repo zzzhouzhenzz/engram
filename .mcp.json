@@ -1,9 +1,8 @@
 {
   "mcpServers": {
     "engram_mcp_server": {
-      "type": "stdio",
-      "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd",
-      "args": ["run-server"]
+      "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-server",
+      "args": []
     }
   }
 }
