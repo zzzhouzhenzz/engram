@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# SessionStart hook for engram plugin
+# Bootstraps venv if needed, runs engram_session_start, wraps output as context injection
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DATA_DIR="${CLAUDE_PLUGIN_DATA:-${HOME}/.engram}"
+VENV_DIR="${DATA_DIR}/.venv"
+
+# Bootstrap: create venv and install engram if not yet installed
+if [ ! -f "${VENV_DIR}/bin/engram_session_start" ]; then
+    python3 -m venv "${VENV_DIR}" 2>/dev/null
+    "${VENV_DIR}/bin/pip" install -q "${PLUGIN_ROOT}" 2>/dev/null
+fi
+
+# Run the hook and capture output
+output=$("${VENV_DIR}/bin/engram_session_start" 2>/dev/null) || true
+
+if [ -z "$output" ]; then
+    exit 0
+fi
+
+# Escape output for JSON embedding
+escaped=$(printf '%s' "$output" | "${VENV_DIR}/bin/python3" -c "import sys,json; print(json.dumps(sys.stdin.read()))")
+
+# Inject into model context via hookSpecificOutput
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":%s}}\n' "$escaped"
+
+exit 0

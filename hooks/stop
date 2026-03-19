@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Stop hook for engram plugin
+# Bootstraps venv if needed, pipes stdin (hook payload) to engram_stop
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DATA_DIR="${CLAUDE_PLUGIN_DATA:-${HOME}/.engram}"
+VENV_DIR="${DATA_DIR}/.venv"
+
+# Bootstrap: create venv and install engram if not yet installed
+if [ ! -f "${VENV_DIR}/bin/engram_stop" ]; then
+    python3 -m venv "${VENV_DIR}" 2>/dev/null
+    "${VENV_DIR}/bin/pip" install -q "${PLUGIN_ROOT}" 2>/dev/null
+fi
+
+# Pipe stdin through to the Python hook (it reads the JSON payload)
+exec "${VENV_DIR}/bin/engram_stop"
